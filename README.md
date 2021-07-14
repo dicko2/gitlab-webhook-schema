@@ -9,7 +9,9 @@ Run script command line like so
 .\gen-schema.ps1 -outputPath "<target output path>"
 ```
 
-Note: the script downlads and uses a Json to CSharp class coverter published [here](https://github.com/agoda-com/JsonCSharpClassGenerator/releases) 
+After generating the API project create an implementation for IWebHookService and register it in the IoC container.
+
+Note: the script downloads and uses a Json to CSharp class converter published [here](https://github.com/agoda-com/JsonCSharpClassGenerator/releases) 
 
 ### Current limitations
 
