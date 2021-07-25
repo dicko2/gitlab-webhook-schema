@@ -1,6 +1,17 @@
 Param(
-[string]$outputPath="C:\source\genWebhookGitlab"
+[string]$outputPath=""
 )
+
+if($outputPath -eq "")
+{
+    $outputPath= "$PWD\bin"
+    if(!(Test-Path bin))
+    {
+        mkdir bin
+    }
+    Set-Location bin
+    Write-Host "outputPath not set, using $outputPath"
+}
 
 $str = invoke-webrequest https://gitlab.com/gitlab-org/gitlab/-/raw/master/doc/user/project/integrations/webhooks.md -UseBasicParsing
 function ToPascalCase
@@ -62,6 +73,13 @@ $x = 0;
 $ctrlrFinal=$ctrlrStart
 $interfaceFinal=$interfaceStart
 $usingFinal = $usingStart
+$noteInc=0
+$noteTypes = @('_commit','_merge_request','_issue','_code_snippet')
+ #commit
+        #merge request
+        #issue
+        #code snip
+$currentNote = ""        
 foreach($block in $aryBlocks)
 {
 if($x -eq 0)
@@ -74,38 +92,36 @@ $json = $block.SubString(0, $block.IndexOf("``````"))
 try
 {
     $obj = $json | ConvertFrom-Json 
-    $continue=$true
 
     if($obj.object_kind -eq "Note")
     {
-        #commit
-        #merge request
-        #issue
-        #code snip
-        $continue=$false
+        $currentNote = $noteTypes[$noteInc]
+        $noteInc++
+    }
+    else {
+        $currentNote = ""
     }
 }
 catch
 {
-    $continue=$false
     Write-Host "Processing failed for $objKind , skipping"
 }
-if($continue -eq $true)
+if($null -ne $obj.object_kind)
 {
-if($obj.object_kind -ne $null)
-{
-$objKind = ToPascalCase $obj.object_kind
+$objKind = ToPascalCase ($obj.object_kind + $currentNote)
 Write-Host "Processing $objKind" 
 $json | Out-File "$objKind.json"
 #remove-item JsonClassGeneratorConsole.exe
-if(!(Test-Path JsonClassGeneratorConsole.exe))
+if(!(Test-Path "$outputPath\JsonClassGeneratorConsole.exe"))
 {
-Invoke-WebRequest https://github.com/agoda-com/JsonCSharpClassGenerator/releases/download/v1.1.14/win-x64.zip -OutFile win-x64.zip
-Add-Type -Assembly 'System.IO.Compression.FileSystem'
-[System.IO.Compression.ZipFile]::ExtractToDirectory(".\win-x64.zip",".\")
+    Write-Host "JsonClassGeneratorConsole missing, downloading"
+    Invoke-WebRequest https://github.com/agoda-com/JsonCSharpClassGenerator/releases/download/v1.1.18/win-x64.zip -OutFile win-x64.zip
+    Add-Type -Assembly 'System.IO.Compression.FileSystem'
+    Write-Host "JsonClassGeneratorConsole Extracting"
+    [System.IO.Compression.ZipFile]::ExtractToDirectory("$outputPath\win-x64.zip",$outputPath)
 }
 
-.\JsonClassGeneratorConsole.exe -i="$objKind.json" -n="Gitlab.WebHooks.$objKind" -c="Hook$objKind" -t="$outputPath\$objKind" -p
+& $outputPath\JsonClassGeneratorConsole.exe -i="$objKind.json" -n="Gitlab.WebHooks.$objKind" -c="Hook$objKind" -t="$outputPath\$objKind" -p
 
 $ctrlrFinal += $ctrlrMid.Replace("WebHookName", "Hook$objKind")
 $usingFinal += @"
@@ -114,7 +130,7 @@ using Gitlab.WebHooks.$objKind;
 "@
 $interfaceFinal += $interafaceMid.Replace("WebHookName", "Hook$objKind")
 }
-}
+
 
 }
 
@@ -142,6 +158,7 @@ $usingFinal + $interfaceFinal | Out-File "$outputPath\IWebHookService.cs"
   
   <ItemGroup>
     <PackageReference Include="Newtonsoft.Json" Version="13.0.1" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.NewtonsoftJson" Version="5.0.8" />
   </ItemGroup>
 
 </Project>
@@ -192,7 +209,7 @@ namespace Gitlab.WebHooks
 
         public void ConfigureServices(IServiceCollection services)
         {
-            services.AddControllers();
+            services.AddControllers().AddNewtonsoftJson();
         }
 
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
